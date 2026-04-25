@@ -1,6 +1,6 @@
 # College Marketplace
 
-A full-stack web application designed for college students to buy and sell items within their campus community.
+A AI Powered full-stack web application designed for college students to buy and sell items within their campus community.
 
 ## Structure
 - `frontend/`: Contains the React/Vite web application.
