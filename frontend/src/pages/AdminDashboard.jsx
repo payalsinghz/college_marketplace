@@ -105,7 +105,13 @@ const AdminDashboard = () => {
             <span style={{ fontWeight: '700', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Admin Control Panel</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <Link to="/" className="btn btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', color: '#10b981', borderColor: 'rgba(16,185,129,0.35)' }}>
+            Post Item as Admin
+          </Link>
+          <Link to="/chat" className="btn btn-secondary" style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem' }}>
+            Open Chats
+          </Link>
           <button onClick={() => setActiveTab('overview')} style={tabStyle('overview')}><span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>Overview</span></button>
           <button onClick={() => setActiveTab('users')} style={tabStyle('users')}>Users ({users.length})</button>
           <button onClick={() => setActiveTab('items')} style={tabStyle('items')}>Items ({items.length})</button>

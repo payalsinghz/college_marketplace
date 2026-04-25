@@ -5,6 +5,23 @@ const Review = require('../models/Review');
 
 const router = express.Router();
 
+// Get admin contact details for direct support chat
+router.get('/admin/contact', async (req, res) => {
+  try {
+    const admin = await User.findOne({ role: 'admin' }).select('name email');
+    if (!admin) return res.status(404).json({ message: 'Admin account not found' });
+
+    res.json({
+      id: admin._id,
+      name: admin.name,
+      email: admin.email
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error fetching admin contact' });
+  }
+});
+
 // Get public user profile details
 router.get('/:id', async (req, res) => {
   try {

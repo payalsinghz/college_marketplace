@@ -1,9 +1,10 @@
 import { useContext } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Phone, Trash2, ShoppingCart, User as UserIcon, Heart } from 'lucide-react';
+import { Mail, Phone, Trash2, ShoppingCart, User as UserIcon, Heart, MessageCircle } from 'lucide-react';
 import { WishlistContext } from '../context/WishlistContext';
 
 const ItemCard = ({ item, currentUser, onDelete, onBuy, hideSellerLink }) => {
+  const isValidObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ''));
   const currentId = currentUser ? String(currentUser.id || currentUser._id) : null;
   // owner can be a populated object {_id, name, email} or a raw ID string
   const ownerId = item.owner
@@ -85,6 +86,15 @@ const ItemCard = ({ item, currentUser, onDelete, onBuy, hideSellerLink }) => {
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1.5rem', display: '-webkit-box', WebkitLineClamp: '2', WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.6' }}>
           {item.description}
         </p>
+        {Array.isArray(item.tags) && item.tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1rem' }}>
+            {item.tags.slice(0, 4).map((tag) => (
+              <span key={`${item._id}-${tag}`} style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem', borderRadius: '999px', background: 'rgba(139,92,246,0.15)', color: '#b9a0ff', border: '1px solid rgba(139,92,246,0.25)' }}>
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
         
         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.25rem', marginTop: 'auto' }}>
           <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1.5px', color: 'var(--accent-primary)', marginBottom: '0.75rem', fontWeight: '700' }}>Contact Seller</p>
@@ -107,15 +117,29 @@ const ItemCard = ({ item, currentUser, onDelete, onBuy, hideSellerLink }) => {
         </div>
 
         {!isOwner && (
-          <button 
-            onClick={(e) => { e.stopPropagation(); if (onBuy) onBuy(item); }}
-            className="btn btn-primary"
-            style={{ width: '100%', marginTop: '1.25rem', padding: '0.875rem', fontSize: '1rem', background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
-            onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)'; }}
-            onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.3)'; }}
-          >
-            <ShoppingCart size={18} style={{marginRight: '8px'}} /> Buy Now
-          </button>
+          <>
+            {ownerId && !ownerId.toString().startsWith('mock') && (
+              <Link
+                to={`/chat?user=${ownerId}${
+                  isValidObjectId(item._id) ? `&item=${item._id}` : ''
+                }`}
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: '1.25rem', padding: '0.875rem', fontSize: '1rem' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MessageCircle size={18} style={{ marginRight: '8px' }} /> Message Seller
+              </Link>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); if (onBuy) onBuy(item); }}
+              className="btn btn-primary"
+              style={{ width: '100%', marginTop: '0.75rem', padding: '0.875rem', fontSize: '1rem', background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+              onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.4)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(16, 185, 129, 0.3)'; }}
+            >
+              <ShoppingCart size={18} style={{ marginRight: '8px' }} /> Buy Now
+            </button>
+          </>
         )}
       </div>
     </div>

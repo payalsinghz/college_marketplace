@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 import ItemCard from '../components/ItemCard';
 import Footer from '../components/Footer';
-import { LogOut, Plus, X, Search, Filter, Star } from 'lucide-react';
+import { LogOut, Plus, X, Search, Filter, Star, MessageCircle, Sparkles } from 'lucide-react';
 import { WishlistContext } from '../context/WishlistContext';
 import { initialMockItems } from '../constants/mockData';
 
@@ -18,6 +18,7 @@ const Dashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [purchasingItem, setPurchasingItem] = useState(null);
   const [paymentStatus, setPaymentStatus] = useState('idle'); // idle, processing, success
+  const [paymentMessage, setPaymentMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   
   // Filter State
@@ -25,13 +26,18 @@ const Dashboard = () => {
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [adminContact, setAdminContact] = useState(null);
   
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState('Other');
+  const [tags, setTags] = useState('');
+  const [roughText, setRoughText] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiInfo, setAiInfo] = useState('');
 
   const fetchItems = async (e) => {
     if (e) e.preventDefault();
@@ -40,18 +46,18 @@ const Dashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { search: searchQuery, category: categoryFilter, minPrice, maxPrice }
       });
-      
+
+      setItems(res.data);
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to fetch items', err);
+
       let currentMocks = initialMockItems;
       if (searchQuery) currentMocks = currentMocks.filter(i => i.title.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase()));
       if (categoryFilter !== 'All') currentMocks = currentMocks.filter(i => (i.category || 'Other') === categoryFilter);
       if (minPrice) currentMocks = currentMocks.filter(i => i.price >= Number(minPrice));
       if (maxPrice) currentMocks = currentMocks.filter(i => i.price <= Number(maxPrice));
-
-      setItems([...res.data, ...currentMocks]);
-      setLoading(false);
-    } catch (err) {
-      console.error('Failed to fetch items', err);
-      setItems(initialMockItems);
+      setItems(currentMocks);
       setLoading(false);
     }
   };
@@ -59,8 +65,18 @@ const Dashboard = () => {
   useEffect(() => {
     if (token) {
       fetchItems();
+      fetchAdminContact();
     }
   }, [token]);
+
+  const fetchAdminContact = async () => {
+    try {
+      const res = await axios.get('http://localhost:5000/api/users/admin/contact');
+      setAdminContact(res.data);
+    } catch (err) {
+      console.error('Failed to fetch admin contact', err);
+    }
+  };
 
   const handleDelete = async (id) => {
     if (id.toString().startsWith('mock')) {
@@ -80,21 +96,97 @@ const Dashboard = () => {
   };
 
   const handleBuy = (item) => {
+    if (String(item._id || '').startsWith('mock')) {
+      alert('Payment is only available for real listed items.');
+      return;
+    }
     setPurchasingItem(item);
     setPaymentStatus('idle');
+    setPaymentMessage('');
   };
 
-  const triggerPayment = () => {
+  const loadRazorpaySdk = () =>
+    new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
+  const triggerPayment = async () => {
+    if (!purchasingItem) return;
+
     setPaymentStatus('processing');
-    
-    // Simulate real-world payment call delay
-    setTimeout(() => {
-      setPaymentStatus('success');
-      // Remove item simulated after success but DON'T close modal, wait for rating
-      setTimeout(() => {
-        setItems(items.filter(i => i._id !== purchasingItem._id)); // Removing from list
-      }, 1000);
-    }, 3000);
+    setPaymentMessage('');
+    try {
+      const sdkReady = await loadRazorpaySdk();
+      if (!sdkReady) {
+        throw new Error('Failed to load Razorpay checkout.');
+      }
+
+      const configRes = await axios.get('http://localhost:5000/api/payments/config', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const orderRes = await axios.post(
+        'http://localhost:5000/api/payments/create-order',
+        { itemId: purchasingItem._id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const { orderId, amount, currency } = orderRes.data;
+      const options = {
+        key: configRes.data.keyId,
+        amount,
+        currency,
+        name: 'College Marketplace',
+        description: `Purchase: ${purchasingItem.title}`,
+        order_id: orderId,
+        handler: async (response) => {
+          try {
+            await axios.post(
+              'http://localhost:5000/api/payments/verify',
+              {
+                itemId: purchasingItem._id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature
+              },
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            setPaymentStatus('success');
+            setItems((prev) => prev.filter((i) => i._id !== purchasingItem._id));
+          } catch (verifyError) {
+            setPaymentStatus('idle');
+            setPaymentMessage(
+              verifyError.response?.data?.message || 'Payment completed but verification failed.'
+            );
+          }
+        },
+        prefill: {
+          name: user?.name || '',
+          email: user?.email || ''
+        },
+        theme: {
+          color: '#7c3aed'
+        },
+        modal: {
+          ondismiss: () => {
+            setPaymentStatus('idle');
+            setPaymentMessage('Payment was cancelled.');
+          }
+        }
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch (error) {
+      setPaymentStatus('idle');
+      setPaymentMessage(error.response?.data?.message || error.message || 'Unable to start payment.');
+    }
   };
 
   const submitRating = async (rating) => {
@@ -130,6 +222,7 @@ const Dashboard = () => {
     formData.append('description', description);
     formData.append('price', price);
     formData.append('category', category);
+    formData.append('tags', tags);
     formData.append('image', imageFile);
 
     try {
@@ -141,12 +234,72 @@ const Dashboard = () => {
       });
       setItems([res.data, ...items]);
       setShowModal(false);
-      setTitle(''); setDescription(''); setPrice(''); setImageFile(null);
+      setTitle('');
+      setDescription('');
+      setPrice('');
+      setCategory('Other');
+      setTags('');
+      setRoughText('');
+      setAiInfo('');
+      setImageFile(null);
     } catch (err) {
       console.error('Error adding item', err);
       alert(err.response?.data?.message || 'Error posting the item. Make sure you have valid Cloudinary credentials in the .env file.');
     }
     setSubmitting(false);
+  };
+
+  const fileToBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const generateWithAI = async () => {
+    if (!roughText.trim()) {
+      alert('Please enter rough details before generating with AI.');
+      return;
+    }
+
+    setAiGenerating(true);
+    setAiInfo('');
+    try {
+      const payload = { roughText };
+      if (imageFile) {
+        payload.imageBase64 = await fileToBase64(imageFile);
+        payload.mimeType = imageFile.type || 'image/jpeg';
+      }
+
+      const res = await axios.post('http://localhost:5000/api/items/ai-suggest', payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const suggestion = res.data;
+      setTitle(suggestion.title || '');
+      setDescription(suggestion.description || '');
+      setCategory(suggestion.category || 'Other');
+      setTags((suggestion.tags || []).join(', '));
+      if (suggestion.suggestedPriceRange?.min && suggestion.suggestedPriceRange?.max) {
+        const suggestedPrice = ((Number(suggestion.suggestedPriceRange.min) + Number(suggestion.suggestedPriceRange.max)) / 2).toFixed(2);
+        setPrice(suggestedPrice);
+        setAiInfo(
+          `AI suggested price range: $${suggestion.suggestedPriceRange.min} - $${suggestion.suggestedPriceRange.max} (${suggestion.source || 'ai'} mode)`
+        );
+      } else {
+        setAiInfo(`AI content generated (${suggestion.source || 'ai'} mode).`);
+      }
+    } catch (err) {
+      console.error('Failed to generate listing with AI', err);
+      alert(err.response?.data?.message || 'AI generation failed. Please try again.');
+    } finally {
+      setAiGenerating(false);
+    }
   };
 
   return (
@@ -171,6 +324,18 @@ const Dashboard = () => {
           <button onClick={() => setShowModal(true)} className="btn btn-primary" style={{ padding: '0.6rem 1.25rem', fontSize: '0.875rem' }}>
             <Plus size={18} /> Post Item
           </button>
+          {user?.role !== 'admin' && adminContact?.id && (
+            <Link
+              to={`/chat?user=${adminContact.id}`}
+              className="btn btn-secondary"
+              style={{ padding: '0.6rem 1.1rem', fontSize: '0.85rem', fontWeight: '600', borderColor: 'rgba(16,185,129,0.4)', color: '#10b981' }}
+            >
+              <MessageCircle size={16} /> Chat with Admin
+            </Link>
+          )}
+          <Link to="/chat" className="btn btn-secondary" style={{ padding: '0.6rem 1.1rem', fontSize: '0.85rem', fontWeight: '600' }}>
+            <MessageCircle size={16} /> Chats
+          </Link>
           {/* Wishlist button with count badge */}
           <Link
             to="/profile"
@@ -283,6 +448,11 @@ const Dashboard = () => {
                 >
                   Proceed to Secure Pay
                 </button>
+                {paymentMessage && (
+                  <p style={{ marginTop: '0.8rem', color: '#fca5a5', fontSize: '0.85rem' }}>
+                    {paymentMessage}
+                  </p>
+                )}
               </div>
             )}
 
@@ -330,9 +500,19 @@ const Dashboard = () => {
               <X size={20} />
             </button>
             <h2 className="heading-2" style={{ marginBottom: '0.5rem', fontSize: '1.75rem' }}>Post a New Item</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.9rem' }}>Fill in the details below to list your item manually.</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.9rem' }}>Fill manually or use AI to generate high-quality listing content.</p>
             
             <form onSubmit={handleSubmit}>
+              <div className="input-group">
+                <label className="input-label">Rough Details for AI (optional but recommended)</label>
+                <textarea
+                  className="input-field"
+                  value={roughText}
+                  onChange={(e) => setRoughText(e.target.value)}
+                  rows="3"
+                  placeholder="Example: 2nd year engineering maths textbook, little used, no torn pages, selling urgently."
+                />
+              </div>
               <div className="input-group">
                 <label className="input-label">Title</label>
                 <input type="text" className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Casio Scientific Calculator FX-991EX" required />
@@ -361,6 +541,28 @@ const Dashboard = () => {
                 <label className="input-label">Item Image</label>
                 <input type="file" className="input-field" style={{ padding: '0.75rem' }} onChange={(e) => setImageFile(e.target.files[0])} accept="image/*" required />
               </div>
+              <div className="input-group">
+                <label className="input-label">Tags (comma separated)</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="engineering, semester2, calculator"
+                />
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: '0.25rem', padding: '0.875rem', borderColor: 'rgba(139,92,246,0.45)', color: 'var(--accent-primary)' }}
+                onClick={generateWithAI}
+                disabled={aiGenerating}
+              >
+                <Sparkles size={16} /> {aiGenerating ? 'Generating with AI...' : 'Generate with AI'}
+              </button>
+              {aiInfo && (
+                <p style={{ marginTop: '0.8rem', fontSize: '0.82rem', color: '#10b981' }}>{aiInfo}</p>
+              )}
               <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '1.5rem', padding: '1rem' }} disabled={submitting}>
                 {submitting ? 'Uploading to Cloudinary...' : 'List Item'}
               </button>

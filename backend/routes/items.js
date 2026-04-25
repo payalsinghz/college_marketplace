@@ -1,27 +1,16 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const Item = require('../models/Item');
 const User = require('../models/User');
 const { upload } = require('../config/cloudinary');
+const auth = require('../middleware/auth');
+const { generateListingSuggestion } = require('../services/listingAssistant');
 
 const router = express.Router();
-
-const auth = (req, res, next) => {
-  const token = req.header('Authorization');
-  if (!token) return res.status(401).json({ message: 'No token, authorization denied' });
-  try {
-    const decoded = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
-    req.user = decoded.userId;
-    next();
-  } catch (err) {
-    res.status(401).json({ message: 'Token is not valid' });
-  }
-};
 
 router.get('/', auth, async (req, res) => {
   try {
     const { search, category, minPrice, maxPrice } = req.query;
-    let query = {};
+    let query = { isSold: false };
 
     if (search) {
       query.$or = [
@@ -61,7 +50,7 @@ router.get('/user/:userId', auth, async (req, res) => {
 
 router.post('/', [auth, upload.single('image')], async (req, res) => {
   try {
-    const { title, description, price, category } = req.body;
+    const { title, description, price, category, tags } = req.body;
     let imageUrl = '';
     
     if (req.file && req.file.path) {
@@ -75,6 +64,9 @@ router.post('/', [auth, upload.single('image')], async (req, res) => {
       description,
       price,
       category,
+      tags: typeof tags === 'string'
+        ? tags.split(',').map((tag) => tag.trim().toLowerCase()).filter(Boolean).slice(0, 8)
+        : [],
       imageUrl,
       owner: req.user
     });
@@ -85,6 +77,28 @@ router.post('/', [auth, upload.single('image')], async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server Error. Check Cloudinary credentials.' });
+  }
+});
+
+router.post('/ai-suggest', auth, async (req, res) => {
+  try {
+    const { roughText = '', imageBase64 = '', mimeType = '' } = req.body;
+    const cleanedText = String(roughText).trim();
+
+    if (cleanedText.length < 6) {
+      return res.status(400).json({ message: 'Please provide at least a short rough description.' });
+    }
+
+    const suggestion = await generateListingSuggestion({
+      roughText: cleanedText,
+      imageBase64: imageBase64 ? String(imageBase64) : '',
+      mimeType: mimeType ? String(mimeType) : ''
+    });
+
+    res.json(suggestion);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Failed to generate AI listing suggestion' });
   }
 });
 

@@ -8,6 +8,7 @@ import LandingPage from './pages/LandingPage';
 import Profile from './pages/Profile';
 import UserProfile from './pages/UserProfile';
 import AdminDashboard from './pages/AdminDashboard';
+import Chat from './pages/Chat';
 
 function App() {
   const { user, loading } = useContext(AuthContext);
@@ -24,6 +25,7 @@ function App() {
         <Route path="/" element={user ? <Dashboard /> : <LandingPage />} />
         <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
         <Route path="/user/:id" element={user ? <UserProfile /> : <Navigate to="/login" />} />
+        <Route path="/chat" element={user ? <Chat /> : <Navigate to="/login" />} />
         <Route path="/admin" element={user?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/" />} />
       </Routes>
     </Router>
